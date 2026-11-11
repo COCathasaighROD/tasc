@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tasc</title>
+  <meta name="description" content="A simple priority list for everything you are working on.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/geist-sans@5.1.0/400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/geist-sans@5.1.0/600.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/geist-mono@5.1.0/400.css">
+  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+  <link rel="stylesheet" href="styles.css">
+  <script>
+    try {
+      var t = localStorage.getItem("tasc-theme");
+      if (t) document.documentElement.dataset.theme = t;
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="side">
+      <header class="brand">
+        <h1>Tasc</h1>
+        <button class="icon-btn" id="themeBtn" type="button" aria-label="Toggle light and dark theme">
+          <i class="ph ph-circle-half" aria-hidden="true"></i>
+        </button>
+      </header>
+
+      <form class="add" id="addForm" autocomplete="off">
+        <label for="taskInput">New task</label>
+        <input id="taskInput" type="text" maxlength="140" placeholder="Write the proposal outline" required>
+
+        <fieldset class="seg">
+          <legend>Priority</legend>
+          <input type="radio" name="priority" id="p1" value="1">
+          <label for="p1">Now</label>
+          <input type="radio" name="priority" id="p2" value="2" checked>
+          <label for="p2">Next</label>
+          <input type="radio" name="priority" id="p3" value="3">
+          <label for="p3">Later</label>
+        </fieldset>
+
+        <button class="btn primary" type="submit"><i class="ph ph-plus" aria-hidden="true"></i>Add task</button>
+      </form>
+
+      <dl class="stats" aria-label="Summary">
+        <div><dt>Open</dt><dd id="statOpen">0</dd></div>
+        <div><dt>Done</dt><dd id="statDone">0</dd></div>
+      </dl>
+
+      <div class="tools">
+        <button class="btn ghost" id="exportBtn" type="button"><i class="ph ph-download-simple" aria-hidden="true"></i>Export</button>
+        <button class="btn ghost" id="importBtn" type="button"><i class="ph ph-upload-simple" aria-hidden="true"></i>Import</button>
+        <input type="file" id="importFile" accept="application/json" hidden>
+      </div>
+    </aside>
+
+    <main class="main" id="lists" aria-live="polite"></main>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+  <script src="app.js"></script>
+</body>
+</html>
