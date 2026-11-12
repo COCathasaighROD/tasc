@@ -1,26 +1,36 @@
 (() => {
   "use strict";
 
-  const KEY = "tasc-tasks-v1";
-  const GROUPS = [
-    { p: 1, name: "Now", hint: "Working on it today" },
-    { p: 2, name: "Next", hint: "Up after Now" },
-    { p: 3, name: "Later", hint: "Parked for now" },
+  const KEY = "tasc-tasks-v2";
+  const OLD_KEY = "tasc-tasks-v1";
+  const TIERS = [
+    { p: 1, name: "Urgent", icon: "ph-caret-double-up" },
+    { p: 2, name: "High", icon: "ph-caret-up" },
+    { p: 3, name: "Medium", icon: "ph-equals" },
+    { p: 4, name: "Low", icon: "ph-caret-down" },
   ];
+  const tier = (p) => TIERS.find((t) => t.p === p) || TIERS[2];
 
   let tasks = load();
+  let filter = null;
   let editingId = null;
-  let dragId = null;
-  let seen = new Set();
+  let popFor = null;
+  const seen = new Set(tasks.map((t) => t.id));
 
   const $ = (s) => document.querySelector(s);
   const listsEl = $("#lists");
+  const pop = $("#pop");
 
+  /* Storage */
   function load() {
     try {
-      const raw = JSON.parse(localStorage.getItem(KEY));
-      return Array.isArray(raw) ? raw : [];
-    } catch (e) { return []; }
+      const v2 = JSON.parse(localStorage.getItem(KEY));
+      if (Array.isArray(v2)) return v2;
+      // One-time migration from the Now / Next / Later version.
+      const v1 = JSON.parse(localStorage.getItem(OLD_KEY));
+      if (Array.isArray(v1)) return v1.map((t) => ({ ...t, priority: { 1: 2, 2: 3, 3: 4 }[t.priority] || 3, due: null }));
+    } catch (e) {}
+    return [];
   }
   function save() {
     try { localStorage.setItem(KEY, JSON.stringify(tasks)); } catch (e) { toast("Could not save in this browser"); }
@@ -36,21 +46,51 @@
     toast.t = setTimeout(() => t.classList.remove("show"), 2200);
   }
 
+  /* Dates */
+  const startOfToday = () => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); };
+  const parseDate = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+  const daysUntil = (s) => Math.round((parseDate(s) - startOfToday()) / 864e5);
+
+  function dueInfo(s) {
+    const d = daysUntil(s);
+    if (d < 0) return { text: `${-d} day${d === -1 ? "" : "s"} overdue`, cls: "overdue" };
+    if (d === 0) return { text: "Due today", cls: "today" };
+    if (d === 1) return { text: "Due tomorrow", cls: "" };
+    const date = parseDate(s);
+    if (d < 7) return { text: "Due " + date.toLocaleDateString("en-IE", { weekday: "long" }), cls: "" };
+    return { text: "Due " + date.toLocaleDateString("en-IE", { day: "numeric", month: "short" }), cls: "" };
+  }
+
   /* Rendering */
+  function sorted(list) {
+    return list.slice().sort((a, b) => {
+      if (a.priority !== b.priority) return a.priority - b.priority;
+      if (a.due && b.due) return a.due < b.due ? -1 : a.due > b.due ? 1 : 0;
+      if (a.due) return -1;
+      if (b.due) return 1;
+      return 0;
+    });
+  }
+
   function rowHTML(t) {
-    const fresh = seen.has(t.id) ? 'style="animation:none"' : "";
+    const tr = tier(t.priority);
+    const due = t.due ? dueInfo(t.due) : null;
     const body = editingId === t.id
       ? `<input class="edit" value="${esc(t.text)}" maxlength="140" aria-label="Edit task">`
       : `<button class="label" type="button" data-act="edit" title="Click to edit">${esc(t.text)}</button>`;
+    const dueChip = t.done ? "" : due
+      ? `<button class="chip ${due.cls}" type="button" data-act="pop"><i class="ph ph-calendar-blank" aria-hidden="true"></i>${due.text}</button>`
+      : `<button class="chip add-due" type="button" data-act="pop"><i class="ph ph-calendar-plus" aria-hidden="true"></i>Add due date</button>`;
     return `
-      <li class="row${t.done ? " done" : ""}" data-id="${t.id}" draggable="${t.done ? "false" : "true"}" ${fresh}>
+      <li class="row t${t.priority}${t.done ? " done" : ""}${seen.has(t.id) ? "" : " fresh"}" data-id="${t.id}">
         <button class="check" type="button" data-act="toggle" aria-label="${t.done ? "Mark as open" : "Mark as done"}" aria-pressed="${t.done}">
           <i class="ph ph-check" aria-hidden="true"></i>
         </button>
         ${body}
-        <div class="actions">
-          ${t.done ? "" : '<span class="act handle" aria-hidden="true" title="Drag to reorder"><i class="ph ph-dots-six-vertical"></i></span>'}
-          <button class="act del" type="button" data-act="delete" aria-label="Delete task"><i class="ph ph-trash" aria-hidden="true"></i></button>
+        <div class="meta">
+          ${dueChip}
+          ${t.done ? "" : `<button class="chip tier" type="button" data-act="pop" aria-label="Urgency: ${tr.name}. Change"><i class="ph ${tr.icon}" aria-hidden="true"></i>${tr.name}</button>`}
+          <button class="act" type="button" data-act="delete" aria-label="Delete task"><i class="ph ph-trash" aria-hidden="true"></i></button>
         </div>
       </li>`;
   }
@@ -58,60 +98,74 @@
   function render() {
     const open = tasks.filter((t) => !t.done);
     const done = tasks.filter((t) => t.done);
+    const shown = sorted(filter ? open.filter((t) => t.priority === filter) : open);
     const wasOpen = $("#doneWrap") ? $("#doneWrap").open : false;
 
-    let html = GROUPS.map((g) => {
-      const items = open.filter((t) => t.priority === g.p);
-      return `
-        <section class="group" data-p="${g.p}">
-          <div class="group-head">
-            <h2>${g.name}</h2><span class="count">${items.length}</span>
-            <span class="hint">${g.hint}</span>
-          </div>
-          <ul class="rows" data-p="${g.p}">
-            ${items.length ? items.map(rowHTML).join("") : `<li class="empty">${g.p === 1 ? "Nothing here yet. Add a task or drag one over." : "Empty. Drag a task here to move it."}</li>`}
-          </ul>
-        </section>`;
-    }).join("");
+    // Tiles
+    TIERS.forEach((tr) => { $("#n" + tr.p).textContent = open.filter((t) => t.priority === tr.p).length; });
+    document.querySelectorAll(".tile").forEach((el) => el.setAttribute("aria-pressed", String(Number(el.dataset.tier) === filter)));
 
-    html += `
+    // Header summary
+    const overdue = open.filter((t) => t.due && daysUntil(t.due) < 0).length;
+    const today = open.filter((t) => t.due && daysUntil(t.due) === 0).length;
+    const bits = [];
+    if (overdue) bits.push(`${overdue} overdue`);
+    if (today) bits.push(`${today} due today`);
+    $("#summary").textContent = !open.length ? "Nothing open right now." : `${open.length} open${bits.length ? ", " + bits.join(", ") : ""}.`;
+    $("#today").textContent = new Date().toLocaleDateString("en-IE", { weekday: "long", day: "numeric", month: "long" });
+
+    const emptyMsg = filter
+      ? `No ${tier(filter).name.toLowerCase()} tasks. Select the tile again to see everything.`
+      : "No tasks yet. Add your first one above.";
+
+    listsEl.innerHTML = `
+      <section>
+        <div class="list-title">
+          <h2>${filter ? tier(filter).name : "To do"}</h2><span class="count">${shown.length}</span>
+        </div>
+        ${shown.length ? `<ul class="rows">${shown.map(rowHTML).join("")}</ul>` : `<p class="empty">${emptyMsg}</p>`}
+      </section>
       <details class="done-wrap" id="doneWrap"${wasOpen ? " open" : ""}>
         <summary>
           <i class="ph ph-caret-right caret" aria-hidden="true"></i>
           <h2>Done</h2><span class="count">${done.length}</span>
           ${done.length ? '<button class="clear" type="button" data-act="clear">Clear all</button>' : ""}
         </summary>
-        <ul class="rows">
-          ${done.length ? done.map(rowHTML).join("") : '<li class="empty">Finished tasks show up here.</li>'}
-        </ul>
+        ${done.length ? `<ul class="rows">${done.map(rowHTML).join("")}</ul>` : '<p class="empty">Finished tasks show up here.</p>'}
       </details>`;
-
-    listsEl.innerHTML = html;
     tasks.forEach((t) => seen.add(t.id));
-
-    $("#statOpen").textContent = open.length;
-    $("#statDone").textContent = done.length;
 
     const ed = listsEl.querySelector(".edit");
     if (ed) { ed.focus(); ed.setSelectionRange(ed.value.length, ed.value.length); }
   }
 
-  function update() { save(); render(); }
+  function update() { save(); closePop(); render(); }
 
   /* Add */
   $("#addForm").addEventListener("submit", (e) => {
     e.preventDefault();
     const input = $("#taskInput");
+    const dueEl = $("#dueInput");
     const text = input.value.trim();
     if (!text) return;
-    const priority = Number(new FormData(e.target).get("priority"));
-    tasks.push({ id: uid(), text, priority, done: false });
+    const priority = Number(new FormData(e.target).get("tier"));
+    tasks.push({ id: uid(), text, priority, done: false, due: dueEl.value || null });
     input.value = "";
+    dueEl.value = "";
     input.focus();
     update();
   });
 
-  /* Click actions */
+  /* Tier tiles filter */
+  document.querySelector(".tiers").addEventListener("click", (e) => {
+    const tile = e.target.closest(".tile");
+    if (!tile) return;
+    const p = Number(tile.dataset.tier);
+    filter = filter === p ? null : p;
+    render();
+  });
+
+  /* Row actions */
   listsEl.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-act]");
     if (!btn) return;
@@ -127,6 +181,7 @@
     if (act === "toggle") { t.done = !t.done; update(); }
     if (act === "delete") { tasks = tasks.filter((x) => x.id !== t.id); update(); }
     if (act === "edit") { editingId = t.id; render(); }
+    if (act === "pop") openPop(t, btn);
   });
 
   /* Inline edit */
@@ -147,44 +202,51 @@
     if (e.target.classList.contains("edit") && editingId) finishEdit(e.target, true);
   });
 
-  /* Drag and drop between priority groups */
-  listsEl.addEventListener("dragstart", (e) => {
-    const row = e.target.closest(".row");
-    if (!row) return;
-    dragId = row.dataset.id;
-    row.classList.add("dragging");
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", dragId);
-  });
-  listsEl.addEventListener("dragend", () => { dragId = null; clearMarks(); render(); });
-  listsEl.addEventListener("dragover", (e) => {
-    const rows = e.target.closest(".group .rows");
-    if (!rows || !dragId) return;
-    e.preventDefault();
-    clearMarks();
-    rows.closest(".group").classList.add("over");
-    const target = e.target.closest(".row");
-    if (target && target.dataset.id !== dragId) target.classList.add("drop-before");
-  });
-  listsEl.addEventListener("drop", (e) => {
-    const rows = e.target.closest(".group .rows");
-    if (!rows || !dragId) return;
-    e.preventDefault();
-    const p = Number(rows.dataset.p);
-    const moved = tasks.find((t) => t.id === dragId);
-    if (!moved) return;
-    tasks = tasks.filter((t) => t.id !== dragId);
-    moved.priority = p;
-    const target = e.target.closest(".row");
-    const idx = target ? tasks.findIndex((t) => t.id === target.dataset.id) : -1;
-    if (idx >= 0) tasks.splice(idx, 0, moved);
-    else tasks.push(moved);
-    dragId = null;
-    update();
-  });
-  function clearMarks() {
-    listsEl.querySelectorAll(".over, .drop-before").forEach((el) => el.classList.remove("over", "drop-before"));
+  /* Popover: change urgency or due date */
+  function openPop(t, anchor) {
+    if (popFor === t.id && !pop.hidden) return closePop();
+    popFor = t.id;
+    pop.innerHTML = `
+      ${TIERS.map((tr) => `
+        <button class="opt t${tr.p}" type="button" role="menuitemradio" aria-checked="${tr.p === t.priority}" data-tier="${tr.p}">
+          <i class="ph ${tr.icon}" aria-hidden="true"></i>${tr.name}<i class="ph ph-check tick" aria-hidden="true"></i>
+        </button>`).join("")}
+      <div class="sep"></div>
+      <div class="due-edit">
+        <label for="popDue">Due date</label>
+        <div class="row2">
+          <input id="popDue" class="field" type="date" value="${t.due || ""}">
+          ${t.due ? '<button type="button" data-clear-due>Clear</button>' : ""}
+        </div>
+      </div>`;
+    pop.hidden = false;
+    const r = anchor.getBoundingClientRect();
+    const w = pop.offsetWidth, h = pop.offsetHeight;
+    const left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8));
+    let top = r.bottom + 8;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 8);
+    pop.style.left = left + "px";
+    pop.style.top = top + "px";
+    pop.querySelector(".opt[aria-checked='true']").focus();
   }
+  function closePop() { pop.hidden = true; popFor = null; }
+
+  pop.addEventListener("click", (e) => {
+    const t = tasks.find((x) => x.id === popFor);
+    if (!t) return;
+    const opt = e.target.closest(".opt");
+    if (opt) { t.priority = Number(opt.dataset.tier); return update(); }
+    if (e.target.closest("[data-clear-due]")) { t.due = null; update(); }
+  });
+  pop.addEventListener("change", (e) => {
+    const t = tasks.find((x) => x.id === popFor);
+    if (t && e.target.id === "popDue") { t.due = e.target.value || null; update(); }
+  });
+  document.addEventListener("click", (e) => {
+    if (!pop.hidden && !pop.contains(e.target) && !e.target.closest("[data-act='pop']")) closePop();
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !pop.hidden) closePop(); });
+  window.addEventListener("resize", closePop);
 
   /* Theme */
   $("#themeBtn").addEventListener("click", () => {
@@ -215,7 +277,13 @@
       if (!Array.isArray(data)) throw new Error("bad");
       const clean = data
         .filter((t) => t && typeof t.text === "string")
-        .map((t) => ({ id: uid(), text: t.text.slice(0, 140), priority: [1, 2, 3].includes(t.priority) ? t.priority : 2, done: !!t.done }));
+        .map((t) => ({
+          id: uid(),
+          text: t.text.slice(0, 140),
+          priority: [1, 2, 3, 4].includes(t.priority) ? t.priority : 3,
+          done: !!t.done,
+          due: typeof t.due === "string" && /^\d{4}-\d{2}-\d{2}$/.test(t.due) ? t.due : null,
+        }));
       tasks = tasks.concat(clean);
       update();
       toast(`Imported ${clean.length} tasks`);

@@ -4,11 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tasc</title>
-  <meta name="description" content="A simple priority list for everything you are working on.">
+  <meta name="description" content="A simple urgency-ranked list for everything you are working on.">
   <meta name="color-scheme" content="light dark">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/geist-sans@5.1.0/400.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/geist-sans@5.1.0/600.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/geist-mono@5.1.0/400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/bricolage-grotesque@5.1.0/600.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/bricolage-grotesque@5.1.0/700.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/dm-sans@5.1.0/400.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/dm-sans@5.1.0/600.css">
   <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
   <link rel="stylesheet" href="styles.css">
   <script>
@@ -19,47 +20,77 @@
   </script>
 </head>
 <body>
-  <div class="shell">
-    <aside class="side">
-      <header class="brand">
+  <div class="page">
+    <header class="top">
+      <div>
         <h1>Tasc</h1>
-        <button class="icon-btn" id="themeBtn" type="button" aria-label="Toggle light and dark theme">
-          <i class="ph ph-circle-half" aria-hidden="true"></i>
-        </button>
-      </header>
+        <p class="date" id="today"></p>
+        <p class="summary" id="summary"></p>
+      </div>
+      <button class="icon-btn" id="themeBtn" type="button" aria-label="Switch between light and dark theme">
+        <i class="ph ph-circle-half" aria-hidden="true"></i>
+      </button>
+    </header>
 
-      <form class="add" id="addForm" autocomplete="off">
-        <label for="taskInput">New task</label>
-        <input id="taskInput" type="text" maxlength="140" placeholder="Write the proposal outline" required>
+    <section class="tiers" aria-label="Filter by urgency">
+      <button class="tile t1" type="button" data-tier="1" aria-pressed="false">
+        <i class="ph ph-caret-double-up" aria-hidden="true"></i>
+        <span class="n" id="n1">0</span>
+        <span class="name">Urgent</span>
+      </button>
+      <button class="tile t2" type="button" data-tier="2" aria-pressed="false">
+        <i class="ph ph-caret-up" aria-hidden="true"></i>
+        <span class="n" id="n2">0</span>
+        <span class="name">High</span>
+      </button>
+      <button class="tile t3" type="button" data-tier="3" aria-pressed="false">
+        <i class="ph ph-equals" aria-hidden="true"></i>
+        <span class="n" id="n3">0</span>
+        <span class="name">Medium</span>
+      </button>
+      <button class="tile t4" type="button" data-tier="4" aria-pressed="false">
+        <i class="ph ph-caret-down" aria-hidden="true"></i>
+        <span class="n" id="n4">0</span>
+        <span class="name">Low</span>
+      </button>
+    </section>
 
-        <fieldset class="seg">
-          <legend>Priority</legend>
-          <input type="radio" name="priority" id="p1" value="1">
-          <label for="p1">Now</label>
-          <input type="radio" name="priority" id="p2" value="2" checked>
-          <label for="p2">Next</label>
-          <input type="radio" name="priority" id="p3" value="3">
-          <label for="p3">Later</label>
+    <form class="composer" id="addForm" autocomplete="off">
+      <label class="sr" for="taskInput">Task</label>
+      <input id="taskInput" class="field big" type="text" maxlength="140" placeholder="What needs doing?" required>
+
+      <div class="composer-row">
+        <fieldset class="picker">
+          <legend class="sr">Urgency</legend>
+          <input type="radio" name="tier" id="u1" value="1">
+          <label for="u1" class="t1"><i class="ph ph-caret-double-up" aria-hidden="true"></i>Urgent</label>
+          <input type="radio" name="tier" id="u2" value="2">
+          <label for="u2" class="t2"><i class="ph ph-caret-up" aria-hidden="true"></i>High</label>
+          <input type="radio" name="tier" id="u3" value="3" checked>
+          <label for="u3" class="t3"><i class="ph ph-equals" aria-hidden="true"></i>Medium</label>
+          <input type="radio" name="tier" id="u4" value="4">
+          <label for="u4" class="t4"><i class="ph ph-caret-down" aria-hidden="true"></i>Low</label>
         </fieldset>
 
+        <div class="due">
+          <label for="dueInput">Due date (optional)</label>
+          <input id="dueInput" class="field" type="date">
+        </div>
+
         <button class="btn primary" type="submit"><i class="ph ph-plus" aria-hidden="true"></i>Add task</button>
-      </form>
-
-      <dl class="stats" aria-label="Summary">
-        <div><dt>Open</dt><dd id="statOpen">0</dd></div>
-        <div><dt>Done</dt><dd id="statDone">0</dd></div>
-      </dl>
-
-      <div class="tools">
-        <button class="btn ghost" id="exportBtn" type="button"><i class="ph ph-download-simple" aria-hidden="true"></i>Export</button>
-        <button class="btn ghost" id="importBtn" type="button"><i class="ph ph-upload-simple" aria-hidden="true"></i>Import</button>
-        <input type="file" id="importFile" accept="application/json" hidden>
       </div>
-    </aside>
+    </form>
 
-    <main class="main" id="lists" aria-live="polite"></main>
+    <main id="lists" aria-live="polite"></main>
+
+    <footer class="foot">
+      <button class="link" id="exportBtn" type="button"><i class="ph ph-download-simple" aria-hidden="true"></i>Export backup</button>
+      <button class="link" id="importBtn" type="button"><i class="ph ph-upload-simple" aria-hidden="true"></i>Import backup</button>
+      <input type="file" id="importFile" accept="application/json" hidden>
+    </footer>
   </div>
 
+  <div class="pop" id="pop" role="dialog" aria-label="Task details" hidden></div>
   <div class="toast" id="toast" role="status"></div>
   <script src="app.js"></script>
 </body>
