@@ -12,7 +12,6 @@
   const tier = (p) => TIERS.find((t) => t.p === p) || TIERS[2];
 
   let tasks = load();
-  let filter = null;
   let editingId = null;
   let popFor = null;
   const seen = new Set(tasks.map((t) => t.id));
@@ -98,12 +97,11 @@
   function render() {
     const open = tasks.filter((t) => !t.done);
     const done = tasks.filter((t) => t.done);
-    const shown = sorted(filter ? open.filter((t) => t.priority === filter) : open);
-    const wasOpen = $("#doneWrap") ? $("#doneWrap").open : false;
+    const shown = sorted(open);
+    const wasOpen = $("#doneWrap") ? $("#doneWrap").open : true;
 
     // Tiles
     TIERS.forEach((tr) => { $("#n" + tr.p).textContent = open.filter((t) => t.priority === tr.p).length; });
-    document.querySelectorAll(".tile").forEach((el) => el.setAttribute("aria-pressed", String(Number(el.dataset.tier) === filter)));
 
     // Header summary
     const overdue = open.filter((t) => t.due && daysUntil(t.due) < 0).length;
@@ -114,17 +112,17 @@
     $("#summary").textContent = !open.length ? "Nothing open right now." : `${open.length} open${bits.length ? ", " + bits.join(", ") : ""}.`;
     $("#today").textContent = new Date().toLocaleDateString("en-IE", { weekday: "long", day: "numeric", month: "long" });
 
-    const emptyMsg = filter
-      ? `No ${tier(filter).name.toLowerCase()} tasks. Select the tile again to see everything.`
-      : "No tasks yet. Add your first one above.";
+    const groups = TIERS.map((tr) => {
+      const items = shown.filter((t) => t.priority === tr.p);
+      return items.length ? `
+        <section class="group t${tr.p}" id="g${tr.p}">
+          <h2 class="group-title"><i class="ph ${tr.icon}" aria-hidden="true"></i>${tr.name}<span class="count">${items.length}</span></h2>
+          <ul class="rows">${items.map(rowHTML).join("")}</ul>
+        </section>` : "";
+    }).join("");
 
     listsEl.innerHTML = `
-      <section>
-        <div class="list-title">
-          <h2>${filter ? tier(filter).name : "To do"}</h2><span class="count">${shown.length}</span>
-        </div>
-        ${shown.length ? `<ul class="rows">${shown.map(rowHTML).join("")}</ul>` : `<p class="empty">${emptyMsg}</p>`}
-      </section>
+      ${groups || '<p class="empty">No open tasks. Add your first one above.</p>'}
       <details class="done-wrap" id="doneWrap"${wasOpen ? " open" : ""}>
         <summary>
           <i class="ph ph-caret-right caret" aria-hidden="true"></i>
@@ -156,13 +154,11 @@
     update();
   });
 
-  /* Tier tiles filter */
+  /* Tier tiles jump to their group on the same page */
   document.querySelector(".tiers").addEventListener("click", (e) => {
     const tile = e.target.closest(".tile");
-    if (!tile) return;
-    const p = Number(tile.dataset.tier);
-    filter = filter === p ? null : p;
-    render();
+    const group = tile && document.getElementById("g" + tile.dataset.tier);
+    if (group) group.scrollIntoView({ behavior: "smooth", block: "start" });
   });
 
   /* Row actions */
